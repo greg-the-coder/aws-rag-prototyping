@@ -2,13 +2,13 @@
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain_postgres import PGVector
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_aws import BedrockEmbeddings
 from langchain_aws import ChatBedrock
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.memory import BaseMemory
-from langchain.chains import ConversationalRetrievalChain
+from langchain_classic.memory import ConversationBufferMemory
+from langchain_classic.chains import ConversationalRetrievalChain
 import streamlit as st
 import boto3
 from PIL import Image
@@ -32,28 +32,8 @@ DEFAULT_RETRIEVAL_K = 3
 TITLE = "Generative AI Q&A powered by Amazon Bedrock"
 ICON = "🤖"
 
-class SimpleChatMemory(BaseMemory):
-    """A simple chat memory implementation that doesn't require token counting."""
-    chat_history: List = []
-    
-    def clear(self):
-        """Clear memory contents."""
-        self.chat_history = []
-    
-    @property
-    def memory_variables(self) -> List[str]:
-        """Return memory variables."""
-        return ["chat_history"]
-    
-    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Load memory variables."""
-        return {"chat_history": self.chat_history}
-    
-    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, Any]) -> None:
-        """Save context from this conversation to buffer."""
-        if inputs.get("question") and outputs.get("answer"):
-            self.chat_history.append(HumanMessage(content=inputs["question"]))
-            self.chat_history.append(AIMessage(content=outputs["answer"]))
+# Using LangChain's ConversationBufferMemory instead of custom SimpleChatMemory
+# This provides compatibility with ConversationalRetrievalChain
 
 def get_pdf_text(pdf_docs) -> Optional[str]:
     """
@@ -125,7 +105,7 @@ def get_vectorstore(text_chunks: Optional[List[str]]):
         embeddings = BedrockEmbeddings(
             model_id="amazon.titan-embed-text-v2:0",
             client=BEDROCK_CLIENT,
-            region_name=os.getenv('AWS_REGION', DEFAULT_REGION)
+            region_name=DEFAULT_REGION  # Always use us-east-2
         )
         
         if text_chunks is None:
@@ -265,7 +245,11 @@ def get_conversation_chain(vectorstore, model_selection: str):
             input_variables=["context", "question"]
         )
         
-        memory = SimpleChatMemory()
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            output_key="answer"  # Explicitly set output_key to "answer" to resolve multiple keys error
+        )
         
         # For Claude model
         if selected_config["use_claude"]:
@@ -320,13 +304,14 @@ def get_conversation_chain(vectorstore, model_selection: str):
                     
                     # Save to memory
                     memory.save_context({"question": question}, {"answer": answer})
-                    
+
                     # Return in the format expected by the app
                     return {
                         "question": question,
                         "answer": answer,
                         "source_documents": docs,
-                        "chat_history": memory.chat_history
+                        # Use memory's chat_memory.messages instead of chat_history
+                        "chat_history": memory.chat_memory.messages
                     }
                 except Exception as e:
                     logger.error(f"Error in nova_retrieval_chain: {str(e)}")
@@ -335,7 +320,7 @@ def get_conversation_chain(vectorstore, model_selection: str):
                         "question": query_dict["question"],
                         "answer": f"I encountered an error processing your question: {str(e)}",
                         "source_documents": [],
-                        "chat_history": memory.chat_history
+                        "chat_history": memory.chat_memory.messages
                     }
             
             return nova_retrieval_chain
@@ -411,14 +396,14 @@ def reset_chat():
     """Reset the chat history and refresh the UI."""
     if "chat_history" in st.session_state:
         st.session_state.chat_history = []
-    
+
     # Re-initialize conversation with existing vectorstore
     if "vectorstore" in st.session_state and st.session_state.vectorstore:
         st.session_state.conversation = get_conversation_chain(
-            st.session_state.vectorstore, 
+            st.session_state.vectorstore,
             st.session_state.model_selection
         )
-    
+
     # This triggers a rerun to refresh the page and clear displayed messages
     st.rerun()
 
@@ -455,12 +440,7 @@ def display_sidebar():
             3. 💬 Ask questions about your documents
             """)
         
-        # Warning for region setting
-        if os.getenv('AWS_REGION') not in [None, DEFAULT_REGION]:
-            st.warning(f"""
-            ⚠️ Models require {DEFAULT_REGION} region.
-            Current region setting ({os.getenv('AWS_REGION')}) may not work with selected models.
-            """, icon="⚠️")
+        # Warning for region setting is no longer needed as we're forcing the use of us-east-2
         
         # Model selection dropdown
         st.subheader("🤖 Model Selection")
@@ -652,9 +632,11 @@ if __name__ == '__main__':
     try:
         # Load environment variables
         load_dotenv()
-        
+
         # Initialize AWS Bedrock client
-        aws_region = os.getenv('AWS_REGION', DEFAULT_REGION)
+        # Force the use of us-east-2 region regardless of environment variables
+        aws_region = DEFAULT_REGION  # Always use us-east-2
+        print(f"DEBUG: Using AWS region: {aws_region}")
         BEDROCK_CLIENT = boto3.client("bedrock-runtime", aws_region)
         logger.info(f"Initialized Bedrock client in region: {aws_region}")
         
