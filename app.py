@@ -189,13 +189,12 @@ def get_conversation_chain(vectorstore, model_selection: str):
     try:
         # Model configurations based on selection
         model_config = {
-            "Anthropic Claude 3.5 Sonnet": {
-                "model_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "Anthropic Claude 4.5 Sonnet": {
+                "model_id": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                 "use_claude": True,
                 "model_kwargs": {
                     "temperature": 0.5,
                     "max_tokens": 8192,
-                    "top_p": 0.9,
                     "top_k": 250
                 }
             },
@@ -204,13 +203,12 @@ def get_conversation_chain(vectorstore, model_selection: str):
                 "use_claude": False,
                 "max_tokens": 1000
             },
-            "Anthropic Claude 3.5 Haiku": {
-                "model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "Anthropic Claude 4.5 Haiku": {
+                "model_id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                 "use_claude": True,
                 "model_kwargs": {
                     "temperature": 0.5,
                     "max_tokens": 4096,
-                    "top_p": 0.9,
                     "top_k": 250
                 }
             }
@@ -411,7 +409,7 @@ def init_session_state():
     """Initialize session state variables"""
     # Check and initialize session state variables
     if "model_selection" not in st.session_state:
-        st.session_state.model_selection = "Anthropic Claude 3.5 Sonnet"
+        st.session_state.model_selection = "Anthropic Claude 4.5 Sonnet"
         
     if "vectorstore" not in st.session_state:
         st.session_state.vectorstore = get_vectorstore(None)
@@ -445,9 +443,9 @@ def display_sidebar():
         # Model selection dropdown
         st.subheader("🤖 Model Selection")
         model_options = [
-            "Anthropic Claude 3.5 Sonnet",
+            "Anthropic Claude 4.5 Sonnet",
             "Amazon Nova Pro",
-            "Anthropic Claude 3.5 Haiku"
+            "Anthropic Claude 4.5 Haiku"
         ]
         
         selected_model = st.selectbox(
